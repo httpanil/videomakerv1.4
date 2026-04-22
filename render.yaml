@@ -1,0 +1,32 @@
+﻿services:
+  - type: web
+    name: videomaker-v1-4
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: VIDEO_MAKER_WORKERS
+        value: "1"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: GUNICORN_THREADS
+        value: "4"
+      - key: GUNICORN_TIMEOUT
+        value: "600"
+      - key: MAX_UPLOAD_MB
+        value: "256"
+      - key: VIDEO_MAKER_DATA_DIR
+        value: /app/data
+      - key: VIDEO_MAKER_BG_MUSIC
+        value: "1"
+      - key: VIDEO_MAKER_SFX
+        value: "1"
+      - key: VIDEO_MAKER_OVERLAY
+        value: "1"
+    disk:
+      name: videomaker-data
+      mountPath: /app/data
+      sizeGB: 10

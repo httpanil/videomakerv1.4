@@ -1,0 +1,11 @@
+﻿.git/
+__pycache__/
+*.pyc
+.venv/
+.env
+data/
+uploads/
+tmp/
+exports/
+images/
+videomaker V1.2/

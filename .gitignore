@@ -1,0 +1,11 @@
+﻿__pycache__/
+*.pyc
+.venv/
+.env
+data/
+uploads/
+tmp/
+exports/
+images/
+*.log
+videomaker V1.2/
