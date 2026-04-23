@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block body %}
+  <main class="page simple-page">
+    <section class="card article-shell">
+      <p class="eyebrow">Information</p>
+      <h1>{{ heading }}</h1>
+      <p class="intro">{{ intro }}</p>
+
+      {% for section in sections %}
+        <section class="content-section">
+          <h2>{{ section.title }}</h2>
+          {% for paragraph in section.body %}
+            <p>{{ paragraph }}</p>
+          {% endfor %}
+        </section>
+      {% endfor %}
+    </section>
+  </main>
+{% endblock %}

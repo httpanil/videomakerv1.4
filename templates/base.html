@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} | {{ tool_name }}</title>
+  <meta name="description" content="{{ meta_description }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="topbar">
+      <a class="brand" href="{{ url_for('index') }}">{{ tool_name }}</a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('blog_index') }}">Blog</a>
+        <a href="{{ url_for('about') }}">About</a>
+        <a href="{{ url_for('contact') }}">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  {% block body %}{% endblock %}
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <strong>{{ tool_name }}</strong>
+        <p>{{ site_description }}</p>
+      </div>
+      <div class="footer-links">
+        <a href="{{ url_for('about') }}">About</a>
+        <a href="{{ url_for('contact') }}">Contact</a>
+        <a href="{{ url_for('privacy') }}">Privacy Policy</a>
+        <a href="{{ url_for('terms') }}">Terms of Use</a>
+        <a href="{{ url_for('blog_index') }}">Blog</a>
+      </div>
+    </div>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

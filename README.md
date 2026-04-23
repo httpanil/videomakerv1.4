@@ -1,6 +1,6 @@
-# VideoMaker V1.4
+# Free Video Maker V1.4
 
-VideoMaker V1.4 is a Flask web app for creating narrated MP4 videos from a voice-over plus either uploaded images or auto-downloaded keyword images.
+Free Video Maker V1.4 is a Flask web app for creating narrated MP4 videos from a voice-over plus either uploaded images or auto-downloaded keyword images.
 
 ## V1.4 Production Fixes
 
@@ -36,6 +36,7 @@ Open `http://127.0.0.1:5000`.
 - `GUNICORN_THREADS`: request threads. Default `4`.
 - `GUNICORN_TIMEOUT`: worker timeout. Default `600`.
 - `MAX_UPLOAD_MB`: upload size limit. Default `256`.
+- `SITE_CONTACT_EMAIL`: contact email shown on the public contact page. Set this before applying for AdSense.
 - `VIDEO_MAKER_BG_MUSIC`: global switch for user-selected background music. Default `1`.
 - `VIDEO_MAKER_SFX`: global switch for sound effects. Default `1`.
 - `VIDEO_MAKER_OVERLAY`: global switch for user-selected overlay video composition. Default `1`.
@@ -73,6 +74,28 @@ docker run -d --name videomaker \
 ```
 
 For Nginx, proxy to `http://127.0.0.1:10000` and set upload limits high enough for your audio/image files.
+
+## Android App
+
+An Android Studio WebView app is included in:
+
+```text
+android-app/
+```
+
+Open that folder in Android Studio, then set your deployed backend URL in:
+
+```text
+android-app/app/src/main/res/values/strings.xml
+```
+
+Replace:
+
+```text
+https://your-videomaker-url.onrender.com
+```
+
+with your real Render or VPS HTTPS URL. The Android app uses the web backend for rendering; it does not run FFmpeg on the phone.
 
 ## Notes
 

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block body %}
+  <main class="page simple-page">
+    <section class="card article-shell">
+      <p class="eyebrow">Blog</p>
+      <h1>Publishing guides and tool tips</h1>
+      <p class="intro">Helpful articles for creators who want to make narrated videos faster, choose better visuals, and grow a cleaner content workflow.</p>
+      <div class="blog-list">
+        {% for post in posts %}
+          <article class="blog-card">
+            <p class="blog-date">{{ post.published }}</p>
+            <h2><a href="{{ url_for('blog_post', slug=post.slug) }}">{{ post.title }}</a></h2>
+            <p>{{ post.description }}</p>
+            <a class="text-link" href="{{ url_for('blog_post', slug=post.slug) }}">Read article</a>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+{% endblock %}

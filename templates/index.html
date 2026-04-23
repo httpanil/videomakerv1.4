@@ -1,43 +1,33 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VideoMaker V1.4</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block body %}
   <main class="page">
-    <section class="hero shell">
+    <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">VideoMaker V1.4</p>
-        <h1>Turn a voice-over into a finished video without leaving the browser.</h1>
-        <p class="intro">Upload your audio, choose how images should be added, and let the render queue build the final MP4 for you. When it finishes, you can preview it immediately and download it from the same page.</p>
+        <p class="eyebrow">Online Tool</p>
+        <h1>Free AI video maker for faceless videos, voice-over videos, and quick MP4 exports.</h1>
+        <p class="intro">Free Video Maker helps you turn a narration file and a small visual set into a clean MP4. Upload your own images or use keywords, choose the format, then preview and download the finished export from the same page.</p>
         <div class="hero-actions">
-          <a class="primary" href="#create-video">Create a video</a>
-          <a class="ghost" href="#how-to-use">How it works</a>
-        </div>
-        <div class="meta-row">
-          <span>Background workers: {{ queue_workers }}</span>
-          <span>Production fast render enabled</span>
+          <a class="primary" href="#create-video">Start making a video</a>
+          <a class="ghost" href="#how-it-works">How it works</a>
         </div>
       </div>
-      <aside class="hero-panel">
+      <div class="hero-panel">
         <h2>What you need</h2>
         <ul class="check-list">
           <li>One voice-over audio file</li>
-          <li>Either uploaded images or 3+ keywords</li>
-          <li>A few minutes while the render runs</li>
+          <li>Either uploaded images or at least three keywords</li>
+          <li>A few minutes for rendering and export</li>
         </ul>
-        <p class="panel-note">Best for explainers, short reels, narrated slideshows, and simple faceless content.</p>
-      </aside>
+        <p class="panel-note">Best for explainers, educational videos, simple faceless content, reels, slideshows, and lightweight promo edits.</p>
+      </div>
     </section>
 
     <section class="card create-card" id="create-video">
       <div class="section-head">
-        <p class="section-kicker">Create</p>
-        <h2>Start a new video render</h2>
-        <p class="section-copy">Fill in the form from top to bottom. Manual mode is best when you already have your images. Auto mode is best when you want the app to collect them from your keywords.</p>
+        <p class="section-kicker">Tool</p>
+        <h2>Create a new video</h2>
+        <p class="section-copy">Upload your narration, choose your format, select how images should be added, then start the render. The progress panel will stay on the page while your export is generated.</p>
       </div>
 
       <form method="post" action="/create" enctype="multipart/form-data" id="video-form">
@@ -50,7 +40,7 @@
 
           <label class="field">
             <span>2. Video format</span>
-            <small>Choose landscape for YouTube style videos or portrait for shorts and reels.</small>
+            <small>Choose landscape for standard videos or portrait for shorts and reels.</small>
             <select name="orientation">
               <option value="long">Long video (1280 x 720)</option>
               <option value="short">Short video (1080 x 1920)</option>
@@ -60,14 +50,14 @@
 
         <fieldset class="mode-switch">
           <legend>3. Choose how images should be added</legend>
-          <label><input type="radio" name="image_mode" value="manual" checked> I want to upload my own images</label>
-          <label><input type="radio" name="image_mode" value="auto"> I want the app to fetch images using keywords</label>
+          <label><input type="radio" name="image_mode" value="manual" checked> Upload your own images</label>
+          <label><input type="radio" name="image_mode" value="auto"> Fetch images from keywords</label>
         </fieldset>
 
         <div class="grid" id="manual-fields">
           <label class="field full">
             <span>4A. Upload images</span>
-            <small>Add one or more JPG, PNG, or WEBP images. The app will animate them into the video.</small>
+            <small>Add one or more JPG, PNG, or WEBP images. Focused visuals usually produce cleaner results.</small>
             <input type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple>
           </label>
         </div>
@@ -75,8 +65,8 @@
         <div class="grid hidden" id="auto-fields">
           <label class="field full">
             <span>4B. Add keywords</span>
-            <small>Enter at least 3 keywords separated by commas so the app can find relevant images.</small>
-            <input type="text" name="keywords" placeholder="Enter at least 3 keywords separated by commas">
+            <small>Enter at least three keywords separated by commas so the tool can find relevant visuals.</small>
+            <input type="text" name="keywords" placeholder="Example: forest lake, mountain sunrise, hiking trail">
           </label>
         </div>
 
@@ -85,12 +75,12 @@
           <label><input type="checkbox" name="include_sfx" value="1" checked> Add sound effects</label>
           <label><input type="checkbox" name="include_bg_music" value="1"> Add background music</label>
           <label><input type="checkbox" name="include_overlay" value="1"> Add overlay video</label>
-          <p class="inline-note">Background music is usually safe. Overlay video is heavier, so the server may skip it automatically on long or high-resolution renders to prevent a crash.</p>
+          <p class="inline-note">Background music is usually safe. Overlay video is heavier, so the server may skip it automatically on long or high-resolution renders to protect stability.</p>
         </fieldset>
 
         <div class="actions">
           <button type="submit" class="primary" id="submit-button">Create video</button>
-          <p class="inline-note">The page stays responsive while your video renders in the background, and you can preview the result right here when it is done.</p>
+          <p class="inline-note">After rendering starts, you can watch progress, preview the final result, and download the finished MP4 from this page.</p>
         </div>
       </form>
 
@@ -109,8 +99,8 @@
         </div>
         <div class="preview-panel hidden" id="preview-panel">
           <div class="preview-head">
-            <h3>Final video preview</h3>
-            <p>Watch the generated video before you download it.</p>
+            <h3>Preview</h3>
+            <p>Watch the finished export before downloading it.</p>
           </div>
           <div class="video-frame">
             <video id="video-preview" controls playsinline preload="metadata"></video>
@@ -120,84 +110,95 @@
       </section>
     </section>
 
-    <section class="card guidance">
-      <div class="section-head">
-        <p class="section-kicker">Tips</p>
-        <h2>Get cleaner results</h2>
-      </div>
-      <div class="tips-grid">
-        <article>
-          <h3>Use clear voice-over audio</h3>
-          <p>Clean narration gives the render pipeline a better base and helps avoid awkward timing.</p>
-        </article>
-        <article>
-          <h3>Choose focused images</h3>
-          <p>Images with a clear subject work best with the zoom and transition effects used in the video.</p>
-        </article>
-        <article>
-          <h3>Use specific keywords</h3>
-          <p>Instead of broad words like nature, try focused phrases like mountain sunrise, hiking trail, forest lake.</p>
-        </article>
+    <section class="mini-intro">
+      <div>
+        <p class="section-kicker">Use Cases</p>
+        <h2>Built for fast faceless video workflows</h2>
+        <p class="section-copy">Use it as a free video maker, AI-style video maker, faceless video maker, or lightweight online video editor for explainers, educational content, list videos, story videos, and simple short-form edits.</p>
       </div>
     </section>
 
-    <section class="card">
-      <div class="section-head">
-        <p class="section-kicker">Library</p>
-        <h2>Recent exports</h2>
-        <p class="section-copy">Exports are stored in your runtime data directory. On hosts with ephemeral storage, attach a volume if you want them to persist across redeploys.</p>
-      </div>
+    <section class="feature-grid">
+      <section class="card guidance">
+        <div class="section-head">
+          <p class="section-kicker">Tips</p>
+          <h2>Get cleaner results</h2>
+        </div>
+        <div class="tips-grid">
+          <article>
+            <h3>Use clear voice-over audio</h3>
+            <p>Clean narration gives the timeline a stronger base and helps the final export feel more polished.</p>
+          </article>
+          <article>
+            <h3>Use focused visuals</h3>
+            <p>Images with one obvious subject tend to work better with zoom, pan, and transition effects.</p>
+          </article>
+          <article>
+            <h3>Choose specific keywords</h3>
+            <p>Detailed phrases usually produce better image search results than very broad single-word topics.</p>
+          </article>
+        </div>
+      </section>
 
-      {% if exports %}
-        <ul class="exports">
-          {% for export in exports %}
-            <li>
-              <div>
-                <strong>{{ export.name }}</strong>
-                <p>Ready to watch or download.</p>
-              </div>
-              <div class="export-actions">
-                <a class="text-link" href="/jobs/manual-preview?file={{ export.name }}" target="_blank" rel="noopener">Preview</a>
-                <a class="text-link" href="/jobs/manual-download?file={{ export.name }}">Download</a>
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty">No exported videos yet.</p>
-      {% endif %}
+      <section class="card">
+        <div class="section-head">
+          <p class="section-kicker">Library</p>
+          <h2>Recent exports</h2>
+          <p class="section-copy">Preview or download recent completed videos from this server.</p>
+        </div>
+
+        {% if exports %}
+          <ul class="exports">
+            {% for export in exports %}
+              <li>
+                <div>
+                  <strong>{{ export.name }}</strong>
+                  <p>Ready to watch or download.</p>
+                </div>
+                <div class="export-actions">
+                  <a class="text-link" href="/jobs/manual-preview?file={{ export.name }}" target="_blank" rel="noopener">Preview</a>
+                  <a class="text-link" href="/jobs/manual-download?file={{ export.name }}">Download</a>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="empty">No exported videos yet.</p>
+        {% endif %}
+      </section>
     </section>
 
-    <section class="card how-to-use" id="how-to-use">
+    <section class="card how-to-use" id="how-it-works">
       <div class="section-head">
-        <p class="section-kicker">Help</p>
-        <h2>How to use VideoMaker V1.3</h2>
+        <p class="section-kicker">Guide</p>
+        <h2>How to use {{ tool_name }}</h2>
       </div>
       <div class="steps">
         <article>
           <span>01</span>
           <h3>Upload your voice-over</h3>
-          <p>Start with the narration or spoken audio you want the video to follow.</p>
+          <p>Start with the narration or spoken audio that should drive the timing of the final video.</p>
         </article>
         <article>
           <span>02</span>
-          <h3>Pick your video format</h3>
-          <p>Choose long video for widescreen or short video for vertical platforms.</p>
+          <h3>Choose format and visuals</h3>
+          <p>Select long or short format, then upload your own images or add keywords for automatic visuals.</p>
         </article>
         <article>
           <span>03</span>
-          <h3>Add images your way</h3>
-          <p>Upload your own images or switch to keyword mode and let the app gather them.</p>
+          <h3>Pick optional polish</h3>
+          <p>Add sound effects, background music, or overlay if you want a richer result.</p>
         </article>
         <article>
           <span>04</span>
-          <h3>Render, preview, download</h3>
-          <p>Click Create video, wait for the progress bar to complete, then preview and download the final MP4.</p>
+          <h3>Render, preview, and download</h3>
+          <p>Start the render, follow progress on the page, preview the finished video, then download the final MP4.</p>
         </article>
       </div>
     </section>
   </main>
+{% endblock %}
 
+{% block scripts %}
   <script src="{{ url_for('static', filename='app.js') }}"></script>
-</body>
-</html>
+{% endblock %}

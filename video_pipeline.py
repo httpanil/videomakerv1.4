@@ -24,6 +24,8 @@ FPS = 30
 SECONDS_PER_IMAGE = 3
 TRANSITION_FRAMES = 20
 BG_MUSIC_VOLUME = 0.10
+VOICE_MIX_VOLUME = 1.15
+SFX_VOLUME = 0.45
 OVERLAY_OPACITY = 0.5
 MAX_SFX_CLIPS = 16
 MIN_SECONDS_BETWEEN_SFX = 6
@@ -560,13 +562,17 @@ def mux_audio_with_ffmpeg(
     ]
 
     next_input = 2
-    filter_parts = ["[1:a]volume=1.0[a0]"]
+    filter_parts = [
+        f"[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,"
+        f"volume={VOICE_MIX_VOLUME}[a0]"
+    ]
     mix_labels = ["[a0]"]
 
     if bg_music_path:
         command.extend(["-stream_loop", "-1", "-i", str(bg_music_path)])
         filter_parts.append(
-            f"[{next_input}:a]volume={BG_MUSIC_VOLUME},atrim=0:{duration:.3f},asetpts=PTS-STARTPTS[a{len(mix_labels)}]"
+            f"[{next_input}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,"
+            f"volume={BG_MUSIC_VOLUME},atrim=0:{duration:.3f},asetpts=PTS-STARTPTS[a{len(mix_labels)}]"
         )
         mix_labels.append(f"[a{len(mix_labels)}]")
         next_input += 1
@@ -576,13 +582,15 @@ def mux_audio_with_ffmpeg(
         command.extend(["-i", str(sfx_path)])
         label = f"a{len(mix_labels)}"
         filter_parts.append(
-            f"[{next_input}:a]volume=0.75,adelay={delay_ms}|{delay_ms}[{label}]"
+            f"[{next_input}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,"
+            f"volume={SFX_VOLUME},adelay={delay_ms}|{delay_ms}[{label}]"
         )
         mix_labels.append(f"[{label}]")
         next_input += 1
 
     filter_parts.append(
-        f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0[aout]"
+        f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0:normalize=0,"
+        f"alimiter=limit=0.94[aout]"
     )
     command.extend(
         [
