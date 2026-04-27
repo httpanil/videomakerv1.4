@@ -15,8 +15,15 @@ const previewPanel = document.getElementById("preview-panel");
 const videoPreview = document.getElementById("video-preview");
 const keywordInput = document.querySelector('input[name="keywords"]');
 const imageInput = document.querySelector('input[name="images"]');
+const audioInput = document.querySelector('input[name="audio"]');
+const orientationSelect = document.querySelector('select[name="orientation"]');
+const audioLimitNote = document.getElementById("audio-limit-note");
+const audioWarning = document.getElementById("audio-warning");
+const longVideoLimitSeconds = Number(document.getElementById("long-video-limit-seconds")?.value || 180);
+const shortVideoLimitSeconds = Number(document.getElementById("short-video-limit-seconds")?.value || 60);
 
 let activePoll = null;
+let selectedAudioDuration = null;
 
 function asProgress(value) {
   const number = Number(value);
@@ -35,12 +42,50 @@ function stopPolling() {
   submitButton.textContent = "Create video";
 }
 
+function formatLimit(seconds) {
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function currentAudioLimit() {
+  return orientationSelect?.value === "short" ? shortVideoLimitSeconds : longVideoLimitSeconds;
+}
+
+function refreshAudioNotice() {
+  const limit = currentAudioLimit();
+  const orientationLabel = orientationSelect?.value === "short" ? "Vertical" : "Landscape";
+  audioLimitNote.textContent = `${orientationLabel} videos support up to ${formatLimit(limit)} of audio. Longer files will be rejected before rendering starts.`;
+
+  if (!Number.isFinite(selectedAudioDuration)) {
+    audioWarning.classList.add("hidden");
+    audioWarning.textContent = "";
+    submitButton.disabled = false;
+    return;
+  }
+
+  if (selectedAudioDuration > limit) {
+    audioWarning.classList.remove("hidden");
+    audioWarning.textContent = `This audio is ${Math.ceil(selectedAudioDuration)} seconds long, which is over the ${formatLimit(limit)} limit for the selected format.`;
+    submitButton.disabled = true;
+    submitButton.textContent = "Choose shorter audio";
+    return;
+  }
+
+  audioWarning.classList.add("hidden");
+  audioWarning.textContent = "";
+  if (!activePoll) {
+    submitButton.disabled = false;
+    submitButton.textContent = "Create video";
+  }
+}
+
 function updateMode() {
   const mode = document.querySelector('input[name="image_mode"]:checked')?.value;
   manualFields.classList.toggle("hidden", mode !== "manual");
   autoFields.classList.toggle("hidden", mode !== "auto");
   imageInput.required = mode === "manual";
   keywordInput.required = mode === "auto";
+  refreshAudioNotice();
 }
 
 function resetPreview() {
@@ -125,6 +170,12 @@ async function pollJob(statusUrl) {
 
 async function submitForm(event) {
   event.preventDefault();
+
+  if (Number.isFinite(selectedAudioDuration) && selectedAudioDuration > currentAudioLimit()) {
+    refreshAudioNotice();
+    return;
+  }
+
   submitButton.disabled = true;
   submitButton.textContent = "Queueing render...";
   jobActions.classList.add("hidden");
@@ -169,9 +220,44 @@ async function submitForm(event) {
   }
 }
 
+function handleAudioSelection() {
+  const [file] = audioInput.files || [];
+  selectedAudioDuration = null;
+
+  if (!file) {
+    refreshAudioNotice();
+    return;
+  }
+
+  const probe = document.createElement("audio");
+  const objectUrl = URL.createObjectURL(file);
+  probe.preload = "metadata";
+  probe.src = objectUrl;
+
+  probe.onloadedmetadata = () => {
+    selectedAudioDuration = probe.duration;
+    URL.revokeObjectURL(objectUrl);
+    refreshAudioNotice();
+  };
+
+  probe.onerror = () => {
+    selectedAudioDuration = null;
+    URL.revokeObjectURL(objectUrl);
+    audioWarning.classList.remove("hidden");
+    audioWarning.textContent = "The browser could not read this audio file length. You can still upload it, but the server will validate it before rendering.";
+    submitButton.disabled = false;
+    if (!activePoll) {
+      submitButton.textContent = "Create video";
+    }
+  };
+}
+
 form.addEventListener("submit", submitForm);
 radios.forEach((radio) => {
   radio.addEventListener("change", updateMode);
 });
+audioInput.addEventListener("change", handleAudioSelection);
+orientationSelect.addEventListener("change", refreshAudioNotice);
 
 updateMode();
+refreshAudioNotice();

@@ -155,6 +155,8 @@ h3 {
 .intro,
 .section-copy,
 .inline-note,
+.format-note,
+.audio-note,
 .field small,
 .panel-note,
 .preview-head p,
@@ -280,6 +282,24 @@ legend {
 .field small {
   display: block;
   margin-bottom: 10px;
+}
+
+.audio-note,
+.format-note,
+.audio-warning {
+  margin: 10px 0 0;
+  line-height: 1.55;
+  font-size: 0.94rem;
+}
+
+.audio-note,
+.format-note {
+  color: var(--muted);
+}
+
+.audio-warning {
+  color: var(--bad);
+  font-weight: 700;
 }
 
 input[type="text"],

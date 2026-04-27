@@ -14,9 +14,13 @@ from job_manager import JobManager
 from video_pipeline import (
     ALLOWED_AUDIO_EXTENSIONS,
     ALLOWED_IMAGE_EXTENSIONS,
+    LONG_VIDEO_MAX_SECONDS,
     ProjectPaths,
     RenderRequest,
+    SHORT_VIDEO_MAX_SECONDS,
     ensure_project_dirs,
+    max_duration_for_orientation,
+    probe_audio_duration,
     resolve_ffmpeg_binary,
 )
 
@@ -187,6 +191,11 @@ def _find_post(slug: str) -> dict[str, Any] | None:
     return None
 
 
+def _format_duration_limit(seconds: int) -> str:
+    minutes = seconds // 60
+    return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
@@ -215,6 +224,8 @@ def create_app() -> Flask:
             "index.html",
             exports=exports[:10],
             queue_workers=worker_count,
+            long_video_limit_seconds=LONG_VIDEO_MAX_SECONDS,
+            short_video_limit_seconds=SHORT_VIDEO_MAX_SECONDS,
             page_title=TOOL_NAME,
             meta_description="Free Video Maker is a free AI video maker, faceless video maker, and online video editor for creating narrated MP4 videos from voice-over and images.",
         )
@@ -438,6 +449,25 @@ def create_app() -> Flask:
         work_dir = paths.uploads_dir / job_id
         audio_name = secure_filename(audio_file.filename)
         audio_path = _save_upload(audio_file, work_dir / audio_name)
+
+        try:
+            audio_duration = probe_audio_duration(audio_path)
+        except RuntimeError as exc:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            return jsonify({"error": str(exc)}), 400
+
+        max_duration = max_duration_for_orientation(orientation)
+        if audio_duration > max_duration:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            return jsonify(
+                {
+                    "error": (
+                        f"This audio is too long for the selected format. "
+                        f"Landscape videos support up to {_format_duration_limit(LONG_VIDEO_MAX_SECONDS)} "
+                        f"and vertical videos support up to {_format_duration_limit(SHORT_VIDEO_MAX_SECONDS)}."
+                    )
+                }
+            ), 400
 
         manual_images: list[Path] = []
         if image_mode == "manual":

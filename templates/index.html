@@ -31,11 +31,15 @@
       </div>
 
       <form method="post" action="/create" enctype="multipart/form-data" id="video-form">
+        <input type="hidden" id="long-video-limit-seconds" value="{{ long_video_limit_seconds }}">
+        <input type="hidden" id="short-video-limit-seconds" value="{{ short_video_limit_seconds }}">
         <div class="grid">
           <label class="field">
             <span>1. Voice-over audio</span>
             <small>Upload one narration file in MP3, WAV, M4A, AAC, or OGG format.</small>
             <input type="file" name="audio" accept=".mp3,.wav,.m4a,.aac,.ogg" required>
+            <p class="audio-note" id="audio-limit-note">Landscape videos support up to 3 minutes of audio. Vertical videos support up to 1 minute. Longer files will be rejected before rendering starts.</p>
+            <p class="audio-warning hidden" id="audio-warning" role="alert"></p>
           </label>
 
           <label class="field">
@@ -45,6 +49,7 @@
               <option value="long">Long video (1280 x 720)</option>
               <option value="short">Short video (1080 x 1920)</option>
             </select>
+            <p class="format-note">Long videos are currently limited to 3 minutes. Short videos are currently limited to 1 minute to keep renders stable on the live server.</p>
           </label>
         </div>
 
@@ -75,7 +80,7 @@
           <label><input type="checkbox" name="include_sfx" value="1" checked> Add sound effects</label>
           <label><input type="checkbox" name="include_bg_music" value="1"> Add background music</label>
           <label><input type="checkbox" name="include_overlay" value="1"> Add overlay video</label>
-          <p class="inline-note">Background music is usually safe. Overlay video is heavier, so the server may skip it automatically on long or high-resolution renders to protect stability.</p>
+          <p class="inline-note">Background music is usually safe. Overlay video is heavier, so the server may skip it automatically on longer or high-resolution renders to protect stability and avoid memory restarts on hosting.</p>
         </fieldset>
 
         <div class="actions">

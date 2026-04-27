@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import random
 import os
+import random
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -12,10 +12,8 @@ from uuid import uuid4
 import cv2
 import imageio_ffmpeg
 import numpy as np
-from moviepy import AudioFileClip, CompositeVideoClip, VideoFileClip
-from moviepy.video.fx import Loop
+from moviepy import AudioFileClip
 from PIL import Image, ImageFile
-from proglog import ProgressBarLogger
 
 from image_download import generate_images_from_audio_duration
 from video_selector import get_video_resolution
@@ -23,13 +21,15 @@ from video_selector import get_video_resolution
 FPS = 30
 SECONDS_PER_IMAGE = 3
 TRANSITION_FRAMES = 20
-BG_MUSIC_VOLUME = 0.10
-VOICE_MIX_VOLUME = 1.15
-SFX_VOLUME = 0.45
+BG_MUSIC_VOLUME = 0.06
+VOICE_MIX_VOLUME = 1.75
+SFX_VOLUME = 0.28
 OVERLAY_OPACITY = 0.5
 MAX_SFX_CLIPS = 16
 MIN_SECONDS_BETWEEN_SFX = 6
-OVERLAY_PIXEL_SECOND_BUDGET = 120_000_000
+OVERLAY_PIXEL_SECOND_BUDGET = 90_000_000
+LONG_VIDEO_MAX_SECONDS = 180
+SHORT_VIDEO_MAX_SECONDS = 60
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -84,30 +84,17 @@ class RenderRequest:
     include_overlay: bool = False
 
 
-class MoviePyProgressLogger(ProgressBarLogger):
-    def __init__(self, progress_callback: ProgressCallback | None):
-        super().__init__()
-        self.progress_callback = progress_callback
-
-    def bars_callback(self, bar, attr, value, old_value=None):
-        if self.progress_callback is None or attr != "index":
-            return
-
-        bar_data = self.bars.get(bar) or {}
-        total = bar_data.get("total")
-        if not total:
-            return
-
-        progress = min(1.0, max(0.0, value / total))
-
-        if bar == "chunk":
-            self.progress_callback(92 + int(progress * 3), "Mixing audio")
-        elif bar == "frame_index":
-            self.progress_callback(95 + int(progress * 5), "Finalizing video")
-
-
 def resolve_ffmpeg_binary() -> str:
     return shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def resolve_ffprobe_binary() -> str:
+    if ffprobe := shutil.which("ffprobe"):
+        return ffprobe
+
+    ffmpeg_path = Path(resolve_ffmpeg_binary())
+    candidate = ffmpeg_path.with_name("ffprobe.exe" if os.name == "nt" else "ffprobe")
+    return str(candidate)
 
 
 def ensure_runtime_requirements() -> None:
@@ -156,6 +143,31 @@ def load_image_rgb(path: Path) -> np.ndarray:
             return np.array(image.convert("RGB"))
     except Exception as exc:
         raise RuntimeError(f"Could not load image '{path.name}': {exc}") from exc
+
+
+def max_duration_for_orientation(orientation: str) -> int:
+    return SHORT_VIDEO_MAX_SECONDS if orientation == "short" else LONG_VIDEO_MAX_SECONDS
+
+
+def probe_audio_duration(audio_path: Path) -> float:
+    command = [
+        resolve_ffprobe_binary(),
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(audio_path),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError("Could not read the audio duration.")
+
+    try:
+        return max(0.0, float(result.stdout.strip()))
+    except ValueError as exc:
+        raise RuntimeError("Could not parse the audio duration.") from exc
 
 
 def normalize_audio_for_moviepy(audio_path: Path, temp_dir: Path) -> Path:
@@ -327,6 +339,42 @@ def cinematic_zoom(image: np.ndarray, width: int, height: int) -> Iterator[np.nd
     return zoom_animation(image, width, height)
 
 
+def focus_pull(image: np.ndarray, width: int, height: int) -> Iterator[np.ndarray]:
+    image_height, image_width = image.shape[:2]
+    total = FPS * SECONDS_PER_IMAGE
+    for index in range(total):
+        progress = ease_in_out(index / max(1, total - 1))
+        scale = 1.02 + progress * 0.10
+        scaled = cv2.resize(image, (int(image_width * scale), int(image_height * scale)))
+        frame = crop_to_frame(scaled, width, height)
+        blur_strength = max(1, int((1 - progress) * 9) | 1)
+        yield cv2.GaussianBlur(frame, (blur_strength, blur_strength), 0)
+
+
+def vertical_glide(image: np.ndarray, width: int, height: int) -> Iterator[np.ndarray]:
+    scaled = cv2.resize(image, (width, height + 220))
+    total = FPS * SECONDS_PER_IMAGE
+    for index in range(total):
+        max_shift = scaled.shape[0] - height
+        shift = int(ease_in_out(index / max(1, total - 1)) * max_shift)
+        yield scaled[shift:shift + height, :]
+
+
+def drift_zoom(image: np.ndarray, width: int, height: int) -> Iterator[np.ndarray]:
+    image_height, image_width = image.shape[:2]
+    total = FPS * SECONDS_PER_IMAGE
+    for index in range(total):
+        progress = ease_in_out(index / max(1, total - 1))
+        scale = 1.01 + progress * 0.06
+        scaled = cv2.resize(image, (int(image_width * scale), int(image_height * scale)))
+        x_room = max(0, scaled.shape[1] - width)
+        y_room = max(0, scaled.shape[0] - height)
+        x_shift = int(progress * x_room)
+        y_shift = int((1 - progress) * y_room)
+        frame = scaled[y_shift:y_shift + height, x_shift:x_shift + width]
+        yield crop_to_frame(frame, width, height)
+
+
 def fade_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.ndarray]:
     for index in range(TRANSITION_FRAMES):
         yield cv2.addWeighted(image_a, 1 - (index / TRANSITION_FRAMES), image_b, index / TRANSITION_FRAMES, 0)
@@ -390,8 +438,8 @@ def circle_reveal_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterat
         yield frame
 
 
-def flash_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.ndarray]:
-    white = np.full_like(image_a, 255)
+def film_fade_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.ndarray]:
+    white = np.full_like(image_a, 246)
     midpoint = TRANSITION_FRAMES / 2
     for index in range(TRANSITION_FRAMES):
         if index <= midpoint:
@@ -403,18 +451,28 @@ def flash_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.nd
         yield frame
 
 
-def glitch_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.ndarray]:
+def soft_push_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.ndarray]:
+    width = image_a.shape[1]
     height = image_a.shape[0]
     for index in range(TRANSITION_FRAMES):
         alpha = index / TRANSITION_FRAMES
-        base = cv2.addWeighted(image_a, 1 - alpha, image_b, alpha, 0)
-        glitch = base.copy()
-        slice_height = max(4, height // 18)
-        for _ in range(10):
-            y = random.randint(0, max(0, height - slice_height))
-            shift = random.randint(-20, 20)
-            glitch[y:y + slice_height] = np.roll(glitch[y:y + slice_height], shift, axis=1)
-        yield glitch
+        shift = int(alpha * width * 0.24)
+        frame_a = np.roll(image_a, -shift, axis=1)
+        frame_b = np.roll(image_b, width - shift, axis=1)
+        base = cv2.addWeighted(frame_a, 1 - alpha, frame_b, alpha, 0)
+        vignette = np.linspace(0.92, 1.0, height, dtype=np.float32).reshape(height, 1, 1)
+        yield np.clip(base * vignette, 0, 255).astype(np.uint8)
+
+
+def cross_zoom_transition(image_a: np.ndarray, image_b: np.ndarray) -> Iterator[np.ndarray]:
+    height, width = image_a.shape[:2]
+    for index in range(TRANSITION_FRAMES):
+        alpha = index / TRANSITION_FRAMES
+        scale_a = 1.0 + alpha * 0.16
+        scale_b = 1.16 - alpha * 0.16
+        frame_a = crop_to_frame(cv2.resize(image_a, (int(width * scale_a), int(height * scale_a))), width, height)
+        frame_b = crop_to_frame(cv2.resize(image_b, (int(width * scale_b), int(height * scale_b))), width, height)
+        yield cv2.addWeighted(frame_a, 1 - alpha, frame_b, alpha, 0)
 
 
 def choose_animation():
@@ -425,6 +483,9 @@ def choose_animation():
         pan_right_to_left,
         cinematic_pan,
         diagonal_drift,
+        focus_pull,
+        vertical_glide,
+        drift_zoom,
     ])
 
 
@@ -434,31 +495,15 @@ def choose_transition():
         blur_transition,
         zoom_blur_transition,
         circle_reveal_transition,
+        soft_push_transition,
+        cross_zoom_transition,
+        film_fade_transition,
     ])
 
 
 def get_random_bg_music(bg_music_dir: Path) -> Path | None:
     tracks = list_audio_files(bg_music_dir)
     return random.choice(tracks) if tracks else None
-
-
-def get_overlay_clip(overlay_dir: Path) -> VideoFileClip | None:
-    overlay_files = list_overlay_files(overlay_dir)
-    if not overlay_files:
-        return None
-    return VideoFileClip(str(overlay_files[0]))
-
-
-def apply_overlay(base_clip, overlay_clip):
-    if overlay_clip is None:
-        return base_clip
-
-    overlay = overlay_clip.resized(base_clip.size).with_opacity(OVERLAY_OPACITY)
-    if overlay.duration < base_clip.duration:
-        overlay = overlay.with_effects([Loop(duration=base_clip.duration)])
-    else:
-        overlay = overlay.subclipped(0, base_clip.duration)
-    return CompositeVideoClip([base_clip, overlay])
 
 
 def create_export_name(exports_dir: Path) -> Path:
@@ -468,6 +513,16 @@ def create_export_name(exports_dir: Path) -> Path:
 def emit_progress(progress_callback: ProgressCallback | None, value: int, message: str) -> None:
     if progress_callback is not None:
         progress_callback(max(0, min(100, value)), message)
+
+
+def voice_filter_chain() -> str:
+    return (
+        "aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,"
+        "highpass=f=90,"
+        "lowpass=f=12000,"
+        f"volume={VOICE_MIX_VOLUME},"
+        "acompressor=threshold=0.08:ratio=3.2:attack=15:release=180:makeup=4"
+    )
 
 
 def mux_voice_with_ffmpeg(
@@ -489,11 +544,13 @@ def mux_voice_with_ffmpeg(
         "-map",
         "0:v:0",
         "-map",
-        "1:a:0",
+        "[aout]",
         "-c:v",
         "copy",
         "-c:a",
         "aac",
+        "-filter_complex",
+        f"[1:a]{voice_filter_chain()},alimiter=limit=0.98[aout]",
         "-shortest",
         "-movflags",
         "+faststart",
@@ -562,10 +619,7 @@ def mux_audio_with_ffmpeg(
     ]
 
     next_input = 2
-    filter_parts = [
-        f"[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,"
-        f"volume={VOICE_MIX_VOLUME}[a0]"
-    ]
+    filter_parts = [f"[1:a]{voice_filter_chain()}[a0]"]
     mix_labels = ["[a0]"]
 
     if bg_music_path:
@@ -590,7 +644,7 @@ def mux_audio_with_ffmpeg(
 
     filter_parts.append(
         f"{''.join(mix_labels)}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0:normalize=0,"
-        f"alimiter=limit=0.94[aout]"
+        f"alimiter=limit=0.97[aout]"
     )
     command.extend(
         [
@@ -627,35 +681,52 @@ def apply_overlay_with_moviepy(
     input_video: Path,
     output_video: Path,
     paths: ProjectPaths,
+    width: int,
+    height: int,
     progress_callback: ProgressCallback | None,
 ) -> None:
-    video_clip = None
-    overlay_clip = None
-    final_video = None
-    try:
-        emit_progress(progress_callback, 94, "Applying overlay")
-        video_clip = VideoFileClip(str(input_video))
-        overlay_clip = get_overlay_clip(paths.overlay_dir)
-        if overlay_clip is None:
-            shutil.move(str(input_video), str(output_video))
-            emit_progress(progress_callback, 100, "Video is ready")
-            return
-        final_video = apply_overlay(video_clip, overlay_clip)
-        final_video.write_videofile(
-            str(output_video),
-            codec="libx264",
-            audio_codec="aac",
-            preset="ultrafast",
-            logger=MoviePyProgressLogger(progress_callback),
-        )
+    overlay_files = list_overlay_files(paths.overlay_dir)
+    if not overlay_files:
+        shutil.move(str(input_video), str(output_video))
         emit_progress(progress_callback, 100, "Video is ready")
-    finally:
-        if final_video is not None:
-            final_video.close()
-        if overlay_clip is not None:
-            overlay_clip.close()
-        if video_clip is not None:
-            video_clip.close()
+        return
+
+    emit_progress(progress_callback, 94, "Applying overlay")
+    overlay_path = overlay_files[0]
+    command = [
+        resolve_ffmpeg_binary(),
+        "-y",
+        "-i",
+        str(input_video),
+        "-stream_loop",
+        "-1",
+        "-i",
+        str(overlay_path),
+        "-filter_complex",
+        (
+            f"[1:v]scale={width}:{height},format=rgba,colorchannelmixer=aa={OVERLAY_OPACITY}[ov];"
+            f"[0:v][ov]overlay=shortest=1:eof_action=pass:format=auto[vout]"
+        ),
+        "-map",
+        "[vout]",
+        "-map",
+        "0:a:0",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(output_video),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Overlay render failed: {result.stderr.strip()}")
+    if not output_video.exists() or output_video.stat().st_size < 4096:
+        raise RuntimeError("Overlay output file looks invalid.")
+    emit_progress(progress_callback, 100, "Video is ready")
 
 
 def prepare_images(
@@ -698,6 +769,13 @@ def render_video(
         voice_duration = voice_clip.duration
     finally:
         voice_clip.close()
+
+    max_duration = max_duration_for_orientation(request.orientation)
+    if voice_duration > max_duration:
+        raise RuntimeError(
+            f"Audio is too long for this format. The current limit is {max_duration // 60} minute"
+            f"{'' if max_duration == 60 else 's'}."
+        )
 
     total_frames_needed = max(1, int(voice_duration * FPS))
     auto_image_dir = paths.temp_dir / f"images_{uuid4().hex}" if request.image_mode == "auto" else None
@@ -770,7 +848,7 @@ def render_video(
                 complete_message="Audio effects ready",
             )
             try:
-                apply_overlay_with_moviepy(audio_mixed_output, final_output, paths, progress_callback)
+                apply_overlay_with_moviepy(audio_mixed_output, final_output, paths, width, height, progress_callback)
             finally:
                 if audio_mixed_output.exists():
                     audio_mixed_output.unlink()
