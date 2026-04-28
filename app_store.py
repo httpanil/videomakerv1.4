@@ -45,6 +45,19 @@ class AppStore:
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
 
+                CREATE TABLE IF NOT EXISTS pending_submissions (
+                    id TEXT PRIMARY KEY,
+                    orientation TEXT NOT NULL,
+                    image_mode TEXT NOT NULL,
+                    keywords TEXT NOT NULL,
+                    include_sfx INTEGER NOT NULL,
+                    include_bg_music INTEGER NOT NULL,
+                    audio_path TEXT NOT NULL,
+                    audio_duration REAL NOT NULL,
+                    work_dir TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_render_jobs_user_day
                     ON render_jobs(user_id, created_local_day);
 
@@ -184,3 +197,51 @@ class AppStore:
                 (user_id, output_name),
             ).fetchone()
             return dict(row) if row is not None else None
+
+    def create_pending_submission(
+        self,
+        submission_id: str,
+        orientation: str,
+        image_mode: str,
+        keywords: str,
+        include_sfx: bool,
+        include_bg_music: bool,
+        audio_path: str,
+        audio_duration: float,
+        work_dir: str,
+        created_at: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO pending_submissions (
+                    id, orientation, image_mode, keywords, include_sfx, include_bg_music,
+                    audio_path, audio_duration, work_dir, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    submission_id,
+                    orientation,
+                    image_mode,
+                    keywords,
+                    1 if include_sfx else 0,
+                    1 if include_bg_music else 0,
+                    audio_path,
+                    audio_duration,
+                    work_dir,
+                    created_at,
+                ),
+            )
+
+    def get_pending_submission(self, submission_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM pending_submissions WHERE id = ?",
+                (submission_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    def delete_pending_submission(self, submission_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM pending_submissions WHERE id = ?", (submission_id,))

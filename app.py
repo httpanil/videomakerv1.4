@@ -216,6 +216,10 @@ def local_today() -> str:
     return datetime.now(ZoneInfo(APP_TIMEZONE)).date().isoformat()
 
 
+def _pending_submission_key() -> str:
+    return "pending_submission_id"
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
@@ -274,6 +278,63 @@ def create_app() -> Flask:
     def require_user() -> dict[str, Any] | None:
         return getattr(g, "current_user", None)
 
+    def build_render_request(
+        work_dir: Path,
+        audio_path: Path,
+        orientation: str,
+        image_mode: str,
+        keywords: list[str],
+        include_sfx: bool,
+        include_bg_music: bool,
+    ) -> RenderRequest:
+        manual_images: list[Path] = []
+        if image_mode == "manual":
+            uploads = request.files.getlist("images")
+            for upload in uploads:
+                if upload and upload.filename and _allowed(upload.filename, ALLOWED_IMAGE_EXTENSIONS):
+                    image_name = secure_filename(upload.filename)
+                    manual_images.append(_save_upload(upload, work_dir / "images" / image_name))
+            if not manual_images:
+                raise ValueError("Please upload at least one valid image for manual mode.")
+        elif len(keywords) < 3:
+            raise ValueError("Auto mode needs at least 3 keywords.")
+
+        return RenderRequest(
+            audio_path=audio_path,
+            orientation=orientation,
+            image_mode=image_mode,
+            manual_images=manual_images,
+            keywords=keywords,
+            include_sfx=include_sfx,
+            include_bg_music=include_bg_music,
+            include_overlay=False,
+        )
+
+    def finalize_render_for_user(
+        user: dict[str, Any],
+        render_request: RenderRequest,
+        audio_duration: float,
+        work_dir: Path,
+        orientation: str,
+        image_mode: str,
+    ):
+        if store.count_user_jobs_for_day(user["id"], local_today()) >= 1:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            return None, jsonify({"error": "You have already used your free video for today. Come back tomorrow for another render."}), 429
+
+        job = app.config["JOB_MANAGER"].create_job(render_request, work_dir)
+        store.create_render_job(
+            job_id=job.id,
+            user_id=user["id"],
+            orientation=orientation,
+            image_mode=image_mode,
+            audio_duration=audio_duration,
+            created_at=job.created_at,
+            created_local_day=local_today(),
+        )
+        session["active_job_id"] = job.id
+        return job, None, None
+
     @app.get("/")
     def index():
         user = require_user()
@@ -284,6 +345,8 @@ def create_app() -> Flask:
             queue_workers=worker_count,
             long_video_limit_seconds=LONG_VIDEO_MAX_SECONDS,
             short_video_limit_seconds=SHORT_VIDEO_MAX_SECONDS,
+            pending_job_id=session.pop("active_job_id", None),
+            auth_error=session.pop("auth_error", None),
             page_title=TOOL_NAME,
             meta_description="Free Video Maker is a free AI video maker, faceless video maker, and online video editor for creating narrated MP4 videos from voice-over and images.",
         )
@@ -315,6 +378,42 @@ def create_app() -> Flask:
             now_iso=utc_now_iso(),
         )
         session["user_id"] = user["id"]
+        pending_id = session.get(_pending_submission_key())
+        if pending_id:
+            pending = store.get_pending_submission(pending_id)
+            if pending is not None:
+                work_dir = Path(pending["work_dir"])
+                image_mode = pending["image_mode"]
+                manual_images = []
+                if image_mode == "manual":
+                    images_dir = work_dir / "images"
+                    if images_dir.exists():
+                        manual_images = sorted(
+                            path for path in images_dir.iterdir()
+                            if path.suffix.lower() in ALLOWED_IMAGE_EXTENSIONS
+                        )
+                render_request = RenderRequest(
+                    audio_path=Path(pending["audio_path"]),
+                    orientation=pending["orientation"],
+                    image_mode=image_mode,
+                    manual_images=manual_images,
+                    keywords=[item.strip() for item in pending["keywords"].split(",") if item.strip()],
+                    include_sfx=bool(pending["include_sfx"]),
+                    include_bg_music=bool(pending["include_bg_music"]),
+                    include_overlay=False,
+                )
+                job, error_response, _status = finalize_render_for_user(
+                    user=user,
+                    render_request=render_request,
+                    audio_duration=float(pending["audio_duration"]),
+                    work_dir=work_dir,
+                    orientation=pending["orientation"],
+                    image_mode=image_mode,
+                )
+                store.delete_pending_submission(pending_id)
+                session.pop(_pending_submission_key(), None)
+                if error_response is not None:
+                    session["auth_error"] = error_response.get_json().get("error", "Could not resume your render.")
         return redirect(url_for("index"))
 
     @app.get("/logout")
@@ -531,11 +630,6 @@ def create_app() -> Flask:
     @app.post("/create")
     def create_video():
         user = require_user()
-        if user is None:
-            return jsonify({"error": "Please sign in with Google before creating a video."}), 401
-
-        if store.count_user_jobs_for_day(user["id"], local_today()) >= 1:
-            return jsonify({"error": "You have already used your free video for today. Come back tomorrow for another render."}), 429
 
         audio_file = request.files.get("audio")
         if audio_file is None or not audio_file.filename:
@@ -556,8 +650,8 @@ def create_app() -> Flask:
         if image_mode not in {"manual", "auto"}:
             return jsonify({"error": "Unsupported image mode."}), 400
 
-        job_id = uuid4().hex
-        work_dir = paths.uploads_dir / job_id
+        submission_id = uuid4().hex
+        work_dir = paths.uploads_dir / submission_id
         audio_name = secure_filename(audio_file.filename)
         audio_path = _save_upload(audio_file, work_dir / audio_name)
 
@@ -579,42 +673,52 @@ def create_app() -> Flask:
                 }
             ), 400
 
-        manual_images: list[Path] = []
-        if image_mode == "manual":
-            uploads = request.files.getlist("images")
-            for upload in uploads:
-                if upload and upload.filename and _allowed(upload.filename, ALLOWED_IMAGE_EXTENSIONS):
-                    image_name = secure_filename(upload.filename)
-                    manual_images.append(_save_upload(upload, work_dir / "images" / image_name))
-
-            if not manual_images:
-                shutil.rmtree(work_dir, ignore_errors=True)
-                return jsonify({"error": "Please upload at least one valid image for manual mode."}), 400
-        elif len(keywords) < 3:
+        try:
+            render_request = build_render_request(
+                work_dir=work_dir,
+                audio_path=audio_path,
+                orientation=orientation,
+                image_mode=image_mode,
+                keywords=keywords,
+                include_sfx=include_sfx,
+                include_bg_music=include_bg_music,
+            )
+        except ValueError as exc:
             shutil.rmtree(work_dir, ignore_errors=True)
-            return jsonify({"error": "Auto mode needs at least 3 keywords."}), 400
+            return jsonify({"error": str(exc)}), 400
 
-        render_request = RenderRequest(
-            audio_path=audio_path,
-            orientation=orientation,
-            image_mode=image_mode,
-            manual_images=manual_images,
-            keywords=keywords,
-            include_sfx=include_sfx,
-            include_bg_music=include_bg_music,
-            include_overlay=include_overlay,
-        )
+        if user is None:
+            store.create_pending_submission(
+                submission_id=submission_id,
+                orientation=orientation,
+                image_mode=image_mode,
+                keywords=",".join(keywords),
+                include_sfx=include_sfx,
+                include_bg_music=include_bg_music,
+                audio_path=str(audio_path),
+                audio_duration=audio_duration,
+                work_dir=str(work_dir),
+                created_at=utc_now_iso(),
+            )
+            session[_pending_submission_key()] = submission_id
+            return jsonify(
+                {
+                    "error": "Please sign in with Google to finish creating your video.",
+                    "login_required": True,
+                    "login_url": url_for("login_google"),
+                }
+            ), 401
 
-        job = app.config["JOB_MANAGER"].create_job(render_request, work_dir)
-        store.create_render_job(
-            job_id=job.id,
-            user_id=user["id"],
-            orientation=orientation,
-            image_mode=image_mode,
+        job, error_response, status = finalize_render_for_user(
+            user=user,
+            render_request=render_request,
             audio_duration=audio_duration,
-            created_at=job.created_at,
-            created_local_day=local_today(),
+            work_dir=work_dir,
+            orientation=orientation,
+            image_mode=image_mode,
         )
+        if error_response is not None:
+            return error_response, status
         return jsonify(
             {
                 "job_id": job.id,
@@ -638,6 +742,11 @@ def create_app() -> Flask:
         if payload.get("output_name"):
             payload["download_url"] = f"/jobs/{payload['id']}/download"
             payload["preview_url"] = f"/jobs/{payload['id']}/preview"
+        position = payload.get("queue_position")
+        if payload.get("status") == "queued" and position:
+            payload["message"] = f"You are in queue position {position}"
+        elif payload.get("status") == "running" and position == 1:
+            payload["message"] = payload.get("message") or "Your render is in progress"
         return jsonify(payload)
 
     @app.get("/jobs/<job_id>/download")

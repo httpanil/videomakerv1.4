@@ -30,10 +30,10 @@
         <p class="section-copy">Sign in, upload your narration, choose your format, select how images should be added, then start the render. The progress panel will stay on the page while your export is generated.</p>
       </div>
 
-      {% if current_user %}
-        <form method="post" action="/create" enctype="multipart/form-data" id="video-form">
+      <form method="post" action="/create" enctype="multipart/form-data" id="video-form" data-login-url="{{ url_for('login_google') if google_auth_enabled else '' }}">
           <input type="hidden" id="long-video-limit-seconds" value="{{ long_video_limit_seconds }}">
           <input type="hidden" id="short-video-limit-seconds" value="{{ short_video_limit_seconds }}">
+          <input type="hidden" id="resume-job-id" value="{{ pending_job_id or '' }}">
           <div class="grid">
             <label class="field">
               <span>1. Voice-over audio</span>
@@ -53,6 +53,18 @@
               <p class="format-note">Both long and short videos are currently limited to 1 minute 9 seconds. Each Google account can create 1 video per day on the free plan.</p>
             </label>
           </div>
+
+          {% if not current_user %}
+            <div class="sign-in-card">
+              <h3>Fill the form first, then sign in on submit</h3>
+              <p class="section-copy">You can choose your audio, images, and keywords before logging in. When you click Create video, the app will ask for Google sign-in and continue your render after you come back.</p>
+              {% if google_auth_enabled %}
+                <a class="ghost-link" href="{{ url_for('login_google') }}">Or sign in with Google now</a>
+              {% else %}
+                <p class="audio-warning">Google sign-in is not configured yet. Add your Google OAuth credentials on the server to enable account access.</p>
+              {% endif %}
+            </div>
+          {% endif %}
 
           <fieldset class="mode-switch">
             <legend>3. Choose how images should be added</legend>
@@ -89,6 +101,12 @@
           </div>
         </form>
 
+        {% if auth_error %}
+          <div class="sign-in-card">
+            <p class="audio-warning">{{ auth_error }}</p>
+          </div>
+        {% endif %}
+
         <section class="job-panel hidden" id="job-panel" aria-live="polite">
           <div class="job-head">
             <h2>Render status</h2>
@@ -113,17 +131,6 @@
           </div>
           <p class="job-error hidden" id="job-error"></p>
         </section>
-      {% else %}
-        <div class="sign-in-card">
-          <h3>Sign in to start creating</h3>
-          <p class="section-copy">Your videos and history are now private to your account. Sign in with Google to create one free video per day and keep your generated MP4s attached to your own profile.</p>
-          {% if google_auth_enabled %}
-            <a class="primary" href="{{ url_for('login_google') }}">Continue with Google</a>
-          {% else %}
-            <p class="audio-warning">Google sign-in is not configured yet. Add your Google OAuth credentials on the server to enable account access.</p>
-          {% endif %}
-        </div>
-      {% endif %}
     </section>
 
     <section class="mini-intro">

@@ -21,6 +21,8 @@ const audioLimitNote = document.getElementById("audio-limit-note");
 const audioWarning = document.getElementById("audio-warning");
 const longVideoLimitSeconds = Number(document.getElementById("long-video-limit-seconds")?.value || 69);
 const shortVideoLimitSeconds = Number(document.getElementById("short-video-limit-seconds")?.value || 69);
+const resumeJobId = document.getElementById("resume-job-id")?.value || "";
+const loginUrl = form?.dataset?.loginUrl || "";
 
 let activePoll = null;
 let selectedAudioDuration = null;
@@ -202,7 +204,11 @@ async function submitForm(event) {
 
     const payload = await response.json();
 
-    if (!response.ok) {
+      if (!response.ok) {
+      if (response.status === 401 && payload.login_required && payload.login_url) {
+        window.location.href = payload.login_url;
+        return;
+      }
       submitButton.disabled = false;
       submitButton.textContent = "Create video";
       paintJob({
@@ -269,4 +275,7 @@ orientationSelect.addEventListener("change", refreshAudioNotice);
 
 updateMode();
 refreshAudioNotice();
+if (resumeJobId) {
+  pollJob(`/jobs/${resumeJobId}`);
+}
 }

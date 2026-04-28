@@ -28,6 +28,7 @@ class JobState:
     updated_at: str
     request: RenderRequest
     work_dir: Path
+    sequence: int
     output_name: str | None = None
     error: str | None = None
 
@@ -41,6 +42,7 @@ class JobState:
             "updated_at": self.updated_at,
             "output_name": self.output_name,
             "error": self.error,
+            "queue_position": None,
         }
 
 
@@ -58,6 +60,7 @@ class JobManager:
         self.jobs: dict[str, JobState] = {}
         self.lock = threading.Lock()
         self.event_callback = event_callback
+        self.sequence_counter = 0
 
     def _job_record_path(self, job_id: str) -> Path:
         return self.jobs_dir / f"{job_id}.json"
@@ -72,7 +75,9 @@ class JobManager:
     def get_public_job(self, job_id: str) -> dict[str, Any] | None:
         job = self.get_job(job_id)
         if job is not None:
-            return job.to_public_dict()
+            payload = job.to_public_dict()
+            payload["queue_position"] = self.get_queue_position(job_id)
+            return payload
 
         record_path = self._job_record_path(job_id)
         if not record_path.exists():
@@ -95,6 +100,9 @@ class JobManager:
     def create_job(self, render_request: RenderRequest, work_dir: Path) -> JobState:
         job_id = uuid4().hex
         timestamp = utc_now_iso()
+        with self.lock:
+            self.sequence_counter += 1
+            sequence = self.sequence_counter
         job = JobState(
             id=job_id,
             status="queued",
@@ -104,6 +112,7 @@ class JobManager:
             updated_at=timestamp,
             request=render_request,
             work_dir=work_dir,
+            sequence=sequence,
         )
         with self.lock:
             self.jobs[job_id] = job
@@ -117,6 +126,17 @@ class JobManager:
     def get_job(self, job_id: str) -> JobState | None:
         with self.lock:
             return self.jobs.get(job_id)
+
+    def get_queue_position(self, job_id: str) -> int | None:
+        with self.lock:
+            ordered = sorted(
+                (job for job in self.jobs.values() if job.status in {"queued", "running"}),
+                key=lambda job: job.sequence,
+            )
+            for index, job in enumerate(ordered, start=1):
+                if job.id == job_id:
+                    return index
+        return None
 
     def _update_job(self, job_id: str, **changes) -> None:
         with self.lock:
