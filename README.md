@@ -32,7 +32,7 @@ Open `http://127.0.0.1:5000`.
 - `FLASK_SECRET_KEY`: required for production.
 - `GOOGLE_CLIENT_ID`: Google OAuth client id.
 - `GOOGLE_CLIENT_SECRET`: Google OAuth client secret.
-- `APP_TIMEZONE`: local timezone used for daily free-limit checks. Default `Asia/Calcutta`.
+- `APP_TIMEZONE`: local timezone used for daily free-limit checks. Default `Asia/Kolkata`.
 - `PORT`: server port.
 - `VIDEO_MAKER_DATA_DIR`: writable folder for exports, uploads, temp files, and job records.
 - `VIDEO_MAKER_WORKERS`: render workers. Keep `1` on small servers.

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -37,7 +37,7 @@ APP_VERSION = "1.4"
 TOOL_NAME = "Free Video Maker"
 SITE_DESCRIPTION = "Free Video Maker is an online AI video maker and faceless video maker for turning voice-overs, images, transitions, sound effects, and optional background music into finished MP4 videos."
 CONTACT_EMAIL = os.getenv("SITE_CONTACT_EMAIL", "techliciousgyan@gmail.com")
-APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Calcutta")
+APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Kolkata")
 BLOG_POSTS = [
     {
         "slug": "how-to-make-faceless-videos-fast",
@@ -213,7 +213,10 @@ def utc_now_iso() -> str:
 
 
 def local_today() -> str:
-    return datetime.now(ZoneInfo(APP_TIMEZONE)).date().isoformat()
+    try:
+        return datetime.now(ZoneInfo(APP_TIMEZONE)).date().isoformat()
+    except ZoneInfoNotFoundError:
+        return datetime.now(timezone.utc).date().isoformat()
 
 
 def _pending_submission_key() -> str:
