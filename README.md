@@ -13,6 +13,7 @@ Free Video Maker V1.4 is a Flask web app for creating narrated MP4 videos from a
 - Uses per-render auto-image folders instead of one shared image cache.
 - Trims deployment dependencies to the packages this Flask app actually needs.
 - Ships Docker and Render settings for predictable FFmpeg support.
+- Adds Google sign-in, private user history, and per-account daily free usage limits.
 
 ## Local Development
 
@@ -29,6 +30,9 @@ Open `http://127.0.0.1:5000`.
 ## Important Environment Variables
 
 - `FLASK_SECRET_KEY`: required for production.
+- `GOOGLE_CLIENT_ID`: Google OAuth client id.
+- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret.
+- `APP_TIMEZONE`: local timezone used for daily free-limit checks. Default `Asia/Calcutta`.
 - `PORT`: server port.
 - `VIDEO_MAKER_DATA_DIR`: writable folder for exports, uploads, temp files, and job records.
 - `VIDEO_MAKER_WORKERS`: render workers. Keep `1` on small servers.
@@ -43,6 +47,13 @@ Open `http://127.0.0.1:5000`.
 - `VIDEO_MAKER_OVERLAY_PIXEL_SECOND_BUDGET`: safety budget for overlay. Lower it on small servers.
 
 Sound effects and background music use FFmpeg audio mixing and are much lighter than overlay. Overlay still requires video composition, so V1.4 automatically skips it when the estimated workload is too risky.
+
+## Account and Usage Rules
+
+- Users sign in with Google.
+- Each account can create 1 video per day on the free plan.
+- User history and downloads are private to that signed-in account.
+- Long and short videos are both limited to 1 minute 9 seconds of audio.
 
 ## Render Deployment
 
@@ -74,6 +85,12 @@ docker run -d --name videomaker \
 ```
 
 For Nginx, proxy to `http://127.0.0.1:10000` and set upload limits high enough for your audio/image files.
+
+For Google login on a VPS, add your production callback URL in Google Cloud Console, for example:
+
+```text
+https://your-domain.com/auth/google
+```
 
 ## Android App
 

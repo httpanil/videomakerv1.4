@@ -19,11 +19,15 @@ const audioInput = document.querySelector('input[name="audio"]');
 const orientationSelect = document.querySelector('select[name="orientation"]');
 const audioLimitNote = document.getElementById("audio-limit-note");
 const audioWarning = document.getElementById("audio-warning");
-const longVideoLimitSeconds = Number(document.getElementById("long-video-limit-seconds")?.value || 180);
-const shortVideoLimitSeconds = Number(document.getElementById("short-video-limit-seconds")?.value || 60);
+const longVideoLimitSeconds = Number(document.getElementById("long-video-limit-seconds")?.value || 69);
+const shortVideoLimitSeconds = Number(document.getElementById("short-video-limit-seconds")?.value || 69);
 
 let activePoll = null;
 let selectedAudioDuration = null;
+
+if (!form) {
+  // Signed-out homepage does not render the tool form.
+} else {
 
 function asProgress(value) {
   const number = Number(value);
@@ -43,8 +47,12 @@ function stopPolling() {
 }
 
 function formatLimit(seconds) {
-  const minutes = Math.round(seconds / 60);
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (!remainder) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+  return `${minutes} minute ${remainder} seconds`;
 }
 
 function currentAudioLimit() {
@@ -261,3 +269,4 @@ orientationSelect.addEventListener("change", refreshAudioNotice);
 
 updateMode();
 refreshAudioNotice();
+}

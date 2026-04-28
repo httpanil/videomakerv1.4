@@ -28,8 +28,8 @@ OVERLAY_OPACITY = 0.5
 MAX_SFX_CLIPS = 16
 MIN_SECONDS_BETWEEN_SFX = 6
 OVERLAY_PIXEL_SECOND_BUDGET = 90_000_000
-LONG_VIDEO_MAX_SECONDS = 180
-SHORT_VIDEO_MAX_SECONDS = 60
+LONG_VIDEO_MAX_SECONDS = 69
+SHORT_VIDEO_MAX_SECONDS = 69
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -147,6 +147,14 @@ def load_image_rgb(path: Path) -> np.ndarray:
 
 def max_duration_for_orientation(orientation: str) -> int:
     return SHORT_VIDEO_MAX_SECONDS if orientation == "short" else LONG_VIDEO_MAX_SECONDS
+
+
+def format_duration_limit(seconds: int) -> str:
+    minutes = seconds // 60
+    remainder = seconds % 60
+    if remainder == 0:
+        return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{minutes} minute {remainder} seconds"
 
 
 def probe_audio_duration(audio_path: Path) -> float:
@@ -772,10 +780,7 @@ def render_video(
 
     max_duration = max_duration_for_orientation(request.orientation)
     if voice_duration > max_duration:
-        raise RuntimeError(
-            f"Audio is too long for this format. The current limit is {max_duration // 60} minute"
-            f"{'' if max_duration == 60 else 's'}."
-        )
+        raise RuntimeError(f"Audio is too long for this format. The current limit is {format_duration_limit(max_duration)}.")
 
     total_frames_needed = max(1, int(voice_duration * FPS))
     auto_image_dir = paths.temp_dir / f"images_{uuid4().hex}" if request.image_mode == "auto" else None

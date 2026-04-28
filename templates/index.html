@@ -27,92 +27,103 @@
       <div class="section-head">
         <p class="section-kicker">Tool</p>
         <h2>Create a new video</h2>
-        <p class="section-copy">Upload your narration, choose your format, select how images should be added, then start the render. The progress panel will stay on the page while your export is generated.</p>
+        <p class="section-copy">Sign in, upload your narration, choose your format, select how images should be added, then start the render. The progress panel will stay on the page while your export is generated.</p>
       </div>
 
-      <form method="post" action="/create" enctype="multipart/form-data" id="video-form">
-        <input type="hidden" id="long-video-limit-seconds" value="{{ long_video_limit_seconds }}">
-        <input type="hidden" id="short-video-limit-seconds" value="{{ short_video_limit_seconds }}">
-        <div class="grid">
-          <label class="field">
-            <span>1. Voice-over audio</span>
-            <small>Upload one narration file in MP3, WAV, M4A, AAC, or OGG format.</small>
-            <input type="file" name="audio" accept=".mp3,.wav,.m4a,.aac,.ogg" required>
-            <p class="audio-note" id="audio-limit-note">Landscape videos support up to 3 minutes of audio. Vertical videos support up to 1 minute. Longer files will be rejected before rendering starts.</p>
-            <p class="audio-warning hidden" id="audio-warning" role="alert"></p>
-          </label>
+      {% if current_user %}
+        <form method="post" action="/create" enctype="multipart/form-data" id="video-form">
+          <input type="hidden" id="long-video-limit-seconds" value="{{ long_video_limit_seconds }}">
+          <input type="hidden" id="short-video-limit-seconds" value="{{ short_video_limit_seconds }}">
+          <div class="grid">
+            <label class="field">
+              <span>1. Voice-over audio</span>
+              <small>Upload one narration file in MP3, WAV, M4A, AAC, or OGG format.</small>
+              <input type="file" name="audio" accept=".mp3,.wav,.m4a,.aac,.ogg" required>
+              <p class="audio-note" id="audio-limit-note">Long and short videos currently support up to 1 minute 9 seconds of audio. Longer files will be rejected before rendering starts.</p>
+              <p class="audio-warning hidden" id="audio-warning" role="alert"></p>
+            </label>
 
-          <label class="field">
-            <span>2. Video format</span>
-            <small>Choose landscape for standard videos or portrait for shorts and reels.</small>
-            <select name="orientation">
-              <option value="long">Long video (1280 x 720)</option>
-              <option value="short">Short video (1080 x 1920)</option>
-            </select>
-            <p class="format-note">Long videos are currently limited to 3 minutes. Short videos are currently limited to 1 minute to keep renders stable on the live server.</p>
-          </label>
-        </div>
-
-        <fieldset class="mode-switch">
-          <legend>3. Choose how images should be added</legend>
-          <label><input type="radio" name="image_mode" value="manual" checked> Upload your own images</label>
-          <label><input type="radio" name="image_mode" value="auto"> Fetch images from keywords</label>
-        </fieldset>
-
-        <div class="grid" id="manual-fields">
-          <label class="field full">
-            <span>4A. Upload images</span>
-            <small>Add one or more JPG, PNG, or WEBP images. Focused visuals usually produce cleaner results.</small>
-            <input type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple>
-          </label>
-        </div>
-
-        <div class="grid hidden" id="auto-fields">
-          <label class="field full">
-            <span>4B. Add keywords</span>
-            <small>Enter at least three keywords separated by commas so the tool can find relevant visuals.</small>
-            <input type="text" name="keywords" placeholder="Example: forest lake, mountain sunrise, hiking trail">
-          </label>
-        </div>
-
-        <fieldset class="mode-switch effect-options">
-          <legend>5. Sound and visual polish</legend>
-          <label><input type="checkbox" name="include_sfx" value="1" checked> Add sound effects</label>
-          <label><input type="checkbox" name="include_bg_music" value="1"> Add background music</label>
-          <label><input type="checkbox" name="include_overlay" value="1"> Add overlay video</label>
-          <p class="inline-note">Background music is usually safe. Overlay video is heavier, so the server may skip it automatically on longer or high-resolution renders to protect stability and avoid memory restarts on hosting.</p>
-        </fieldset>
-
-        <div class="actions">
-          <button type="submit" class="primary" id="submit-button">Create video</button>
-          <p class="inline-note">After rendering starts, you can watch progress, preview the final result, and download the finished MP4 from this page.</p>
-        </div>
-      </form>
-
-      <section class="job-panel hidden" id="job-panel" aria-live="polite">
-        <div class="job-head">
-          <h2>Render status</h2>
-          <span class="job-badge" id="job-status">Queued</span>
-        </div>
-        <p class="job-message" id="job-message">Waiting to start</p>
-        <div class="progress-track">
-          <div class="progress-fill" id="progress-fill"></div>
-        </div>
-        <p class="job-percent" id="job-percent">0%</p>
-        <div class="job-actions hidden" id="job-actions">
-          <a class="download-link" id="download-link" href="#">Download video</a>
-        </div>
-        <div class="preview-panel hidden" id="preview-panel">
-          <div class="preview-head">
-            <h3>Preview</h3>
-            <p>Watch the finished export before downloading it.</p>
+            <label class="field">
+              <span>2. Video format</span>
+              <small>Choose landscape for standard videos or portrait for shorts and reels.</small>
+              <select name="orientation">
+                <option value="long">Long video (1280 x 720)</option>
+                <option value="short">Short video (1080 x 1920)</option>
+              </select>
+              <p class="format-note">Both long and short videos are currently limited to 1 minute 9 seconds. Each Google account can create 1 video per day on the free plan.</p>
+            </label>
           </div>
-          <div class="video-frame">
-            <video id="video-preview" controls playsinline preload="metadata"></video>
+
+          <fieldset class="mode-switch">
+            <legend>3. Choose how images should be added</legend>
+            <label><input type="radio" name="image_mode" value="manual" checked> Upload your own images</label>
+            <label><input type="radio" name="image_mode" value="auto"> Fetch images from keywords</label>
+          </fieldset>
+
+          <div class="grid" id="manual-fields">
+            <label class="field full">
+              <span>4A. Upload images</span>
+              <small>Add one or more JPG, PNG, or WEBP images. Focused visuals usually produce cleaner results.</small>
+              <input type="file" name="images" accept=".png,.jpg,.jpeg,.webp" multiple>
+            </label>
           </div>
+
+          <div class="grid hidden" id="auto-fields">
+            <label class="field full">
+              <span>4B. Add keywords</span>
+              <small>Enter at least three keywords separated by commas so the tool can find relevant visuals.</small>
+              <input type="text" name="keywords" placeholder="Example: forest lake, mountain sunrise, hiking trail">
+            </label>
+          </div>
+
+          <fieldset class="mode-switch effect-options">
+            <legend>5. Sound and visual polish</legend>
+            <label><input type="checkbox" name="include_sfx" value="1" checked> Add sound effects</label>
+            <label><input type="checkbox" name="include_bg_music" value="1"> Add background music</label>
+            <p class="inline-note">Background music is usually safe. Each account currently gets 1 render per day, and the finished video will appear only in that account's history.</p>
+          </fieldset>
+
+          <div class="actions">
+            <button type="submit" class="primary" id="submit-button">Create video</button>
+            <p class="inline-note">After rendering starts, you can watch progress, preview the final result, and download the finished MP4 from this page.</p>
+          </div>
+        </form>
+
+        <section class="job-panel hidden" id="job-panel" aria-live="polite">
+          <div class="job-head">
+            <h2>Render status</h2>
+            <span class="job-badge" id="job-status">Queued</span>
+          </div>
+          <p class="job-message" id="job-message">Waiting to start</p>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <p class="job-percent" id="job-percent">0%</p>
+          <div class="job-actions hidden" id="job-actions">
+            <a class="download-link" id="download-link" href="#">Download video</a>
+          </div>
+          <div class="preview-panel hidden" id="preview-panel">
+            <div class="preview-head">
+              <h3>Preview</h3>
+              <p>Watch the finished export before downloading it.</p>
+            </div>
+            <div class="video-frame">
+              <video id="video-preview" controls playsinline preload="metadata"></video>
+            </div>
+          </div>
+          <p class="job-error hidden" id="job-error"></p>
+        </section>
+      {% else %}
+        <div class="sign-in-card">
+          <h3>Sign in to start creating</h3>
+          <p class="section-copy">Your videos and history are now private to your account. Sign in with Google to create one free video per day and keep your generated MP4s attached to your own profile.</p>
+          {% if google_auth_enabled %}
+            <a class="primary" href="{{ url_for('login_google') }}">Continue with Google</a>
+          {% else %}
+            <p class="audio-warning">Google sign-in is not configured yet. Add your Google OAuth credentials on the server to enable account access.</p>
+          {% endif %}
         </div>
-        <p class="job-error hidden" id="job-error"></p>
-      </section>
+      {% endif %}
     </section>
 
     <section class="mini-intro">
@@ -147,28 +158,30 @@
 
       <section class="card">
         <div class="section-head">
-          <p class="section-kicker">Library</p>
-          <h2>Recent exports</h2>
-          <p class="section-copy">Preview or download recent completed videos from this server.</p>
+          <p class="section-kicker">History</p>
+          <h2>Your recent videos</h2>
+          <p class="section-copy">Only you can preview or download the videos created from your account.</p>
         </div>
 
-        {% if exports %}
+        {% if current_user and history %}
           <ul class="exports">
-            {% for export in exports %}
+            {% for video in history %}
               <li>
                 <div>
-                  <strong>{{ export.name }}</strong>
-                  <p>Ready to watch or download.</p>
+                  <strong>{{ video.output_name }}</strong>
+                  <p>{{ video.status|capitalize }} | {{ video.created_at[:10] }}</p>
                 </div>
                 <div class="export-actions">
-                  <a class="text-link" href="/jobs/manual-preview?file={{ export.name }}" target="_blank" rel="noopener">Preview</a>
-                  <a class="text-link" href="/jobs/manual-download?file={{ export.name }}">Download</a>
+                  <a class="text-link" href="/jobs/manual-preview?file={{ video.output_name }}" target="_blank" rel="noopener">Preview</a>
+                  <a class="text-link" href="/jobs/manual-download?file={{ video.output_name }}">Download</a>
                 </div>
               </li>
             {% endfor %}
           </ul>
+        {% elif current_user %}
+          <p class="empty">You have not created a finished video yet.</p>
         {% else %}
-          <p class="empty">No exported videos yet.</p>
+          <p class="empty">Sign in to see your private video history.</p>
         {% endif %}
       </section>
     </section>
@@ -192,7 +205,7 @@
         <article>
           <span>03</span>
           <h3>Pick optional polish</h3>
-          <p>Add sound effects, background music, or overlay if you want a richer result.</p>
+          <p>Add sound effects or background music if you want a richer result.</p>
         </article>
         <article>
           <span>04</span>

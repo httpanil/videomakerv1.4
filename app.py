@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import os
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.utils import secure_filename
 
+try:
+    from authlib.integrations.flask_client import OAuth
+except ImportError:
+    OAuth = None
+
+from app_store import AppStore
 from job_manager import JobManager
 from video_pipeline import (
     ALLOWED_AUDIO_EXTENSIONS,
@@ -29,6 +37,7 @@ APP_VERSION = "1.4"
 TOOL_NAME = "Free Video Maker"
 SITE_DESCRIPTION = "Free Video Maker is an online AI video maker and faceless video maker for turning voice-overs, images, transitions, sound effects, and optional background music into finished MP4 videos."
 CONTACT_EMAIL = os.getenv("SITE_CONTACT_EMAIL", "techliciousgyan@gmail.com")
+APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Calcutta")
 BLOG_POSTS = [
     {
         "slug": "how-to-make-faceless-videos-fast",
@@ -193,7 +202,18 @@ def _find_post(slug: str) -> dict[str, Any] | None:
 
 def _format_duration_limit(seconds: int) -> str:
     minutes = seconds // 60
-    return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+    remainder = seconds % 60
+    if remainder == 0:
+        return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{minutes} minute {remainder} seconds"
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def local_today() -> str:
+    return datetime.now(ZoneInfo(APP_TIMEZONE)).date().isoformat()
 
 
 def create_app() -> Flask:
@@ -205,9 +225,41 @@ def create_app() -> Flask:
     paths = build_project_paths()
     ensure_project_dirs(paths)
 
+    store = AppStore(paths.data_dir / "app.db")
+    store.init_db()
+    app.config["APP_STORE"] = store
+
+    oauth = OAuth(app) if OAuth is not None else None
+    google_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    google_auth_enabled = OAuth is not None and bool(google_client_id and google_client_secret)
+    if google_auth_enabled:
+        oauth.register(
+            name="google",
+            client_id=google_client_id,
+            client_secret=google_client_secret,
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"},
+        )
+
+    def sync_job_record(job) -> None:
+        store.update_render_job(
+            job_id=job.id,
+            status=job.status,
+            message=job.message,
+            updated_at=job.updated_at,
+            output_name=job.output_name,
+            error=job.error,
+        )
+
     worker_count = _get_int_env("VIDEO_MAKER_WORKERS", 1)
     app.config["PROJECT_PATHS"] = paths
-    app.config["JOB_MANAGER"] = JobManager(paths, max_workers=worker_count)
+    app.config["JOB_MANAGER"] = JobManager(paths, max_workers=worker_count, event_callback=sync_job_record)
+
+    @app.before_request
+    def load_current_user():
+        user_id = session.get("user_id")
+        g.current_user = store.get_user(user_id) if user_id else None
 
     @app.context_processor
     def inject_site_globals():
@@ -215,19 +267,71 @@ def create_app() -> Flask:
             "tool_name": TOOL_NAME,
             "site_description": SITE_DESCRIPTION,
             "contact_email": CONTACT_EMAIL,
+            "current_user": getattr(g, "current_user", None),
+            "google_auth_enabled": google_auth_enabled,
         }
+
+    def require_user() -> dict[str, Any] | None:
+        return getattr(g, "current_user", None)
 
     @app.get("/")
     def index():
-        exports = sorted(paths.exports_dir.glob("video*.mp4"), key=lambda path: path.stat().st_mtime, reverse=True)
+        user = require_user()
+        history = store.list_user_videos(user["id"], limit=10) if user else []
         return render_template(
             "index.html",
-            exports=exports[:10],
+            history=history,
             queue_workers=worker_count,
             long_video_limit_seconds=LONG_VIDEO_MAX_SECONDS,
             short_video_limit_seconds=SHORT_VIDEO_MAX_SECONDS,
             page_title=TOOL_NAME,
             meta_description="Free Video Maker is a free AI video maker, faceless video maker, and online video editor for creating narrated MP4 videos from voice-over and images.",
+        )
+
+    @app.get("/login/google")
+    def login_google():
+        if not google_auth_enabled:
+            return redirect(url_for("index"))
+        redirect_uri = url_for("auth_google", _external=True)
+        return oauth.google.authorize_redirect(redirect_uri)
+
+    @app.get("/auth/google")
+    def auth_google():
+        if not google_auth_enabled:
+            return redirect(url_for("index"))
+
+        token = oauth.google.authorize_access_token()
+        user_info = token.get("userinfo")
+        if user_info is None:
+            user_info = oauth.google.parse_id_token(token)
+        if user_info is None or not user_info.get("sub") or not user_info.get("email"):
+            return redirect(url_for("index"))
+
+        user = store.upsert_google_user(
+            google_sub=user_info["sub"],
+            email=user_info["email"],
+            name=user_info.get("name") or user_info["email"],
+            avatar_url=user_info.get("picture"),
+            now_iso=utc_now_iso(),
+        )
+        session["user_id"] = user["id"]
+        return redirect(url_for("index"))
+
+    @app.get("/logout")
+    def logout():
+        session.pop("user_id", None)
+        return redirect(url_for("index"))
+
+    @app.get("/history")
+    def history():
+        user = require_user()
+        if user is None:
+            return redirect(url_for("index"))
+        return render_template(
+            "history.html",
+            page_title="Your video history",
+            meta_description=f"Your generated videos on {TOOL_NAME}.",
+            videos=store.list_user_videos(user["id"], limit=50),
         )
 
     @app.get("/about")
@@ -426,6 +530,13 @@ def create_app() -> Flask:
 
     @app.post("/create")
     def create_video():
+        user = require_user()
+        if user is None:
+            return jsonify({"error": "Please sign in with Google before creating a video."}), 401
+
+        if store.count_user_jobs_for_day(user["id"], local_today()) >= 1:
+            return jsonify({"error": "You have already used your free video for today. Come back tomorrow for another render."}), 429
+
         audio_file = request.files.get("audio")
         if audio_file is None or not audio_file.filename:
             return jsonify({"error": "Please upload a voice-over audio file."}), 400
@@ -438,7 +549,7 @@ def create_app() -> Flask:
         keywords = [item.strip() for item in request.form.get("keywords", "").split(",") if item.strip()]
         include_sfx = request.form.get("include_sfx") == "1"
         include_bg_music = request.form.get("include_bg_music") == "1"
-        include_overlay = request.form.get("include_overlay") == "1"
+        include_overlay = False
 
         if orientation not in {"long", "short"}:
             return jsonify({"error": "Unsupported video format."}), 400
@@ -463,8 +574,7 @@ def create_app() -> Flask:
                 {
                     "error": (
                         f"This audio is too long for the selected format. "
-                        f"Landscape videos support up to {_format_duration_limit(LONG_VIDEO_MAX_SECONDS)} "
-                        f"and vertical videos support up to {_format_duration_limit(SHORT_VIDEO_MAX_SECONDS)}."
+                        f"Both long and short videos currently support up to {_format_duration_limit(max_duration)}."
                     )
                 }
             ), 400
@@ -496,6 +606,15 @@ def create_app() -> Flask:
         )
 
         job = app.config["JOB_MANAGER"].create_job(render_request, work_dir)
+        store.create_render_job(
+            job_id=job.id,
+            user_id=user["id"],
+            orientation=orientation,
+            image_mode=image_mode,
+            audio_duration=audio_duration,
+            created_at=job.created_at,
+            created_local_day=local_today(),
+        )
         return jsonify(
             {
                 "job_id": job.id,
@@ -506,6 +625,12 @@ def create_app() -> Flask:
 
     @app.get("/jobs/<job_id>")
     def get_job(job_id: str):
+        user = require_user()
+        if user is None:
+            return jsonify({"error": "Please sign in with Google."}), 401
+        if store.get_render_job_for_user(user["id"], job_id) is None:
+            return jsonify({"error": "Job not found."}), 404
+
         payload = app.config["JOB_MANAGER"].get_public_job(job_id)
         if payload is None:
             return jsonify({"error": "Job not found."}), 404
@@ -517,6 +642,12 @@ def create_app() -> Flask:
 
     @app.get("/jobs/<job_id>/download")
     def download_job_output(job_id: str):
+        user = require_user()
+        if user is None:
+            return jsonify({"error": "Please sign in with Google."}), 401
+        if store.get_render_job_for_user(user["id"], job_id) is None:
+            return jsonify({"error": "This video is not available for your account."}), 404
+
         job = app.config["JOB_MANAGER"].get_public_job(job_id)
         output_name = job.get("output_name") if job else None
         if output_name is None:
@@ -530,6 +661,12 @@ def create_app() -> Flask:
 
     @app.get("/jobs/<job_id>/preview")
     def preview_job_output(job_id: str):
+        user = require_user()
+        if user is None:
+            return jsonify({"error": "Please sign in with Google."}), 401
+        if store.get_render_job_for_user(user["id"], job_id) is None:
+            return jsonify({"error": "This video is not available for your account."}), 404
+
         job = app.config["JOB_MANAGER"].get_public_job(job_id)
         output_name = job.get("output_name") if job else None
         if output_name is None:
@@ -543,7 +680,13 @@ def create_app() -> Flask:
 
     @app.get("/jobs/manual-download")
     def download_existing_output():
+        user = require_user()
+        if user is None:
+            return jsonify({"error": "Please sign in with Google."}), 401
+
         filename = request.args.get("file", "")
+        if store.get_video_by_output_name_for_user(user["id"], filename) is None:
+            return jsonify({"error": "Export file could not be found."}), 404
         file_path = _resolve_export_file(paths.exports_dir, filename)
         if file_path is None:
             return jsonify({"error": "Export file could not be found."}), 404
@@ -552,7 +695,13 @@ def create_app() -> Flask:
 
     @app.get("/jobs/manual-preview")
     def preview_existing_output():
+        user = require_user()
+        if user is None:
+            return jsonify({"error": "Please sign in with Google."}), 401
+
         filename = request.args.get("file", "")
+        if store.get_video_by_output_name_for_user(user["id"], filename) is None:
+            return jsonify({"error": "Export file could not be found."}), 404
         file_path = _resolve_export_file(paths.exports_dir, filename)
         if file_path is None:
             return jsonify({"error": "Export file could not be found."}), 404

@@ -98,11 +98,53 @@ h3 {
   gap: 18px;
 }
 
+.account-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(29, 37, 43, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 700;
+}
+
+.account-chip img {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
 .site-nav a,
 .footer-links a,
 .text-link {
   color: var(--accent-strong);
   font-weight: 700;
+}
+
+.primary-link,
+.ghost-link {
+  font-weight: 700;
+}
+
+.primary-link {
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 10px 16px;
+}
+
+.ghost-link {
+  color: var(--accent-strong);
 }
 
 .site-nav a:hover,
@@ -185,6 +227,7 @@ h3 {
 .hero-panel,
 .mode-switch,
 .preview-panel,
+.sign-in-card,
 .steps article,
 .tips-grid article,
 .blog-card {
@@ -210,6 +253,10 @@ h3 {
 .card {
   margin-top: 24px;
   padding: 28px;
+}
+
+.sign-in-card {
+  padding: 24px;
 }
 
 .mini-intro {
@@ -561,6 +608,10 @@ select:focus {
     padding: 10px 0;
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .account-nav {
+    justify-content: flex-start;
   }
 
   .hero,

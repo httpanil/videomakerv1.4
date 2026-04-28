@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from video_pipeline import ProjectPaths, RenderRequest, render_video
@@ -45,13 +45,19 @@ class JobState:
 
 
 class JobManager:
-    def __init__(self, paths: ProjectPaths, max_workers: int = 1):
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        max_workers: int = 1,
+        event_callback: Callable[[JobState], None] | None = None,
+    ):
         self.paths = paths
         self.jobs_dir = paths.data_dir / "jobs"
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="videomaker")
         self.jobs: dict[str, JobState] = {}
         self.lock = threading.Lock()
+        self.event_callback = event_callback
 
     def _job_record_path(self, job_id: str) -> Path:
         return self.jobs_dir / f"{job_id}.json"
@@ -102,6 +108,8 @@ class JobManager:
         with self.lock:
             self.jobs[job_id] = job
             self._write_job_record(job)
+        if self.event_callback is not None:
+            self.event_callback(job)
 
         self.executor.submit(self._run_job, job_id)
         return job
@@ -120,6 +128,10 @@ class JobManager:
                 setattr(job, key, value)
             job.updated_at = utc_now_iso()
             self._write_job_record(job)
+            callback = self.event_callback
+            callback_job = job
+        if callback is not None:
+            callback(callback_job)
 
     def _run_job(self, job_id: str) -> None:
         job = self.get_job(job_id)
